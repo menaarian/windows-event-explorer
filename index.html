@@ -488,7 +488,6 @@
         <button class="tab-btn" onclick="switchTab('references', this)">📚 الجداول المرجعية</button>
         <button class="tab-btn" onclick="switchTab('flashcards', this)">🧠 وضع التدريب (Flashcards)</button>
         <button class="tab-btn" onclick="switchTab('scenarios', this)">🚨 سيناريوهات الهجمات</button>
-        <button class="tab-btn" onclick="switchTab('fullref', this)">📖 المرجع الكامل (Security Log)</button>
     </div>
 
     <!-- TAB 1: EXPLORER -->
@@ -505,7 +504,7 @@
                 <button class="filter-btn" onclick="setFilter('RDP', this)">RDP</button>
                 <button class="filter-btn" onclick="setFilter('Defender', this)">Defender</button>
             </div>
-            <p class="hint-text">⚠️ الخطورة بتعتمد على السياق: مثلاً 4625 مرة واحدة = منخفضة، لكن 50 مرة من نفس الـ IP = عالية. واختبارات اللاب المعلّم عليها بالأحمر للاب فقط.</p>
+            <p class="hint-text">⚠️ الخطورة بتعتمد على السياق: مثلاً 4625 مرة واحدة = منخفضة، لكن 50 مرة من نفس الـ IP = عالية. واختبارات اللاب المعلّم عليها بالأحمر للاب فقط. الكروت اللي فيها شرح كامل للمذاكرة، والكروت الصغيرة شرحها مختصر من قايمة Microsoft الرسمية للـ Security log.</p>
         </div>
 
         <div class="cards-grid" id="eventsGrid">
@@ -605,30 +604,6 @@
     <div id="scenarios" class="section-content">
         <div id="scenariosContainer">
             <!-- Dynamically populated -->
-        </div>
-    </div>
-
-    <!-- TAB 5: FULL REFERENCE -->
-    <div id="fullref" class="section-content">
-        <div class="controls-container">
-            <input type="text" id="refSearch" class="search-box" placeholder="ابحث في كل أحداث الـ Security Log برقم الحدث أو الوصف بالإنجليزي..." oninput="renderFullRef()">
-            <div class="filters-group">
-                <button class="filter-btn active" onclick="setRefFilter('all', this)">الكل</button>
-                <button class="filter-btn" onclick="setRefFilter('High', this)">High</button>
-                <button class="filter-btn" onclick="setRefFilter('Medium', this)">Medium</button>
-                <button class="filter-btn" onclick="setRefFilter('Low', this)">Low</button>
-                <button class="filter-btn" onclick="setRefFilter('study', this)">⭐ موجود في المذاكرة</button>
-            </div>
-            <p class="hint-text">المصدر: Microsoft Learn — Appendix L: Events to Monitor (القايمة الرسمية لأحداث الـ Security Log)، ومعاها 4 أحداث أحدث (4798، 4799، 5145، 6416). الخطورة هنا تصنيف Microsoft الرسمي. أحداث System وPowerShell وSysmon وRDP وDefender موجودة في تاب مستكشف الأحداث.</p>
-        </div>
-        <div class="table-container">
-            <div class="ref-count" id="refCount"></div>
-            <table>
-                <thead>
-                    <tr><th>Event ID</th><th>Legacy ID</th><th>الخطورة (Microsoft)</th><th>الوصف (Event Summary)</th><th>في المذاكرة</th></tr>
-                </thead>
-                <tbody id="refBody"></tbody>
-            </table>
         </div>
     </div>
 
@@ -2428,12 +2403,31 @@ const fullRefData = [["1102","517","Medium to High","The audit log was cleared."
 ["24595","N/A","Low","Volume %2 contains bad clusters. These clusters will be skipped during conversion."],
 ["24621","N/A","Low","Initial state check: Rolling volume conversion transaction on %2."]];
 
+        // Combined list: full study cards + every official Security log event (short cards)
+        const allEvents = (function () {
+            const studyKeys = new Set(eventsData.map(evKey));
+            const AR2 = { High: 'عالية', Medium: 'متوسطة', Low: 'منخفضة' };
+            const lite = fullRefData
+                .filter(([id]) => !studyKeys.has('Security:' + id))
+                .map(([id, legacy, crit, sum]) => {
+                    const imp = (crit.startsWith('High') || crit === 'Medium to High') ? 'High'
+                              : crit === 'Medium' ? 'Medium' : 'Low';
+                    return {
+                        id: id, title: sum, titleAr: '', desc: sum,
+                        descAr: 'حدث من قايمة Microsoft الرسمية. الشرح العربي التفصيلي لسه مش متضاف.',
+                        log: 'Security', importance: imp, importanceAr: AR2[imp],
+                        mitre: 'N/A', keyFields: [], labTest: '', isTop10: false,
+                        note: legacy !== 'N/A' ? 'Legacy ID: ' + legacy : '', lite: true
+                    };
+                });
+            return [...eventsData, ...lite];
+        })();
+
         // Initialize UI
         window.onload = function() {
             renderEvents();
             renderScenarios();
             initFlashcards();
-            renderFullRef();
         };
 
         // Tab Switching
@@ -2451,7 +2445,7 @@ const fullRefData = [["1102","517","Medium to High","The audit log was cleared."
             const grid = document.getElementById('eventsGrid');
             grid.innerHTML = '';
 
-            let filtered = eventsData.filter(ev => {
+            let filtered = allEvents.filter(ev => {
                 // Exact jump from scenario / reference
                 if (jumpTarget) return ev.id === jumpTarget.id && ev.log === jumpTarget.log;
 
@@ -2508,12 +2502,12 @@ const fullRefData = [["1102","517","Medium to High","The audit log was cleared."
                                 ${ev.isTop10 ? '<span class="badge badge-top10">Top 10</span>' : ''}
                             </div>
                         </div>
-                        <div class="event-title">${ev.titleAr} (${ev.title})</div>
+                        <div class="event-title">${ev.titleAr ? `${ev.titleAr} (${ev.title})` : ev.title}</div>
                         <div class="event-desc">${ev.descAr}</div>
                         <div class="event-details">
                             <div><span>MITRE ATT&CK:</span> ${ev.mitre}</div>
-                            <div><span>أهم الحقول (Key Fields):</span> ${ev.keyFields.join(', ')}</div>
-                            <div><span>اختبار في اللاب:</span> <code>${ev.labTest}</code></div>
+                            ${ev.keyFields.length ? `<div><span>أهم الحقول (Key Fields):</span> ${ev.keyFields.join(', ')}</div>` : ''}
+                            ${ev.labTest ? `<div><span>اختبار في اللاب:</span> <code>${ev.labTest}</code></div>` : ''}
                             ${ev.labDanger ? '<div class="lab-danger">⚠️ في اللاب فقط — ممنوع على أجهزة الإنتاج</div>' : ''}
                             ${ev.note ? `<div style="margin-top:5px; color:var(--accent-yellow);"><span>ملاحظة:</span> ${ev.note}</div>` : ''}
                         </div>
@@ -2550,7 +2544,7 @@ const fullRefData = [["1102","517","Medium to High","The audit log was cleared."
         }
 
         function copyEventInfo(key) {
-            const ev = eventsData.find(e => evKey(e) === key);
+            const ev = allEvents.find(e => evKey(e) === key);
             if (!ev) return;
             const text = [
                 `[${ev.log} Event ID ${ev.id}] ${ev.title}`,
@@ -2720,40 +2714,6 @@ const fullRefData = [["1102","517","Medium to High","The audit log was cleared."
             }
             saveStorage();
             showCurrentCard();
-        }
-
-        // Full Security Log Reference
-        function setRefFilter(f, btn) {
-            refFilter = f;
-            btn.parentElement.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            renderFullRef();
-        }
-
-        function renderFullRef() {
-            const q = document.getElementById('refSearch').value.trim().toLowerCase();
-            const isNum = /^\d+$/.test(q);
-            const studyIds = new Set(eventsData.filter(e => e.log === 'Security').map(e => e.id));
-            let rows = fullRefData.filter(([id, legacy, crit, sum]) => {
-                if (refFilter === 'study' && !studyIds.has(id)) return false;
-                if (refFilter === 'High' && !crit.startsWith('High') && crit !== 'Medium to High') return false;
-                if (refFilter === 'Medium' && !crit.startsWith('Medium')) return false;
-                if (refFilter === 'Low' && crit !== 'Low') return false;
-                if (q) return id.includes(q) || legacy.toLowerCase().includes(q) || sum.toLowerCase().includes(q);
-                return true;
-            });
-            if (isNum) rows = rows.slice().sort((a, b) => (a[0] === q ? 0 : 1) - (b[0] === q ? 0 : 1));
-
-            const badge = c => c === 'High' || c === 'Medium to High' ? 'badge-high' : c === 'Medium' ? 'badge-medium' : c === 'Low' ? 'badge-low' : 'badge-log';
-            document.getElementById('refCount').textContent = `معروض ${rows.length} من ${fullRefData.length} حدث`;
-            document.getElementById('refBody').innerHTML = rows.length ? rows.map(([id, legacy, crit, sum]) => `
-                <tr>
-                    <td><code>${id}</code></td>
-                    <td>${legacy}</td>
-                    <td><span class="badge ${badge(crit)}">${crit}</span></td>
-                    <td dir="ltr" style="text-align:left;">${sum}</td>
-                    <td>${studyIds.has(id) ? `<span class="ref-open" onclick="jumpToEvent('${id}', 'Security')">⭐ افتح الكارت</span>` : ''}</td>
-                </tr>`).join('') : '<tr><td colspan="5" style="text-align:center; color:var(--text-secondary);">لا توجد نتائج مطابقة.</td></tr>';
         }
 
         function updateFcStats() {
