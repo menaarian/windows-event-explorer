@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Windows Event ID Lookup Tool - مستكشف أحداث ويندوز الأمنية</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Cairo & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        soc: {
+                            bg: '#0b0f19',
+                            card: '#111827',
+                            border: '#1f293d',
+                            accent: '#06b6d4',
+                            glow: 'rgba(6, 182, 212, 0.15)',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Cairo', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #0b0f19;
+            color: #e2e8f0;
+            font-family: 'Cairo', sans-serif;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #0b0f19;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #1f293d;
+            border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #06b6d4;
+        }
+        .glass-panel {
+            background: rgba(17, 24, 39, 0.75);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .event-card {
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .event-card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(6, 182, 212, 0.4);
+            box-shadow: 0 10px 25px -5px rgba(6, 182, 212, 0.1);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between custom-scrollbar selection:bg-cyan-500 selection:text-black">
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-6 left-6 z-50 transform translate-y-20 opacity-0 transition-all duration-300 bg-cyan-950 border border-cyan-500 text-cyan-200 px-5 py-3 rounded-xl shadow-2xl flex items-center space-x-3 space-x-reverse">
+        <i class="fa-solid fa-circle-check text-cyan-400 text-lg"></i>
+        <span id="toast-msg" class="text-sm font-semibold">تم النسخ بنجاح!</span>
+    </div>
+
+    <!-- Header Section -->
+    <header class="sticky top-0 z-40 glass-panel border-b border-slate-800/80">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <!-- Title & Logo -->
+                <div class="flex items-center space-x-4 space-x-reverse">
+                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 text-slate-950 font-bold text-2xl">
+                        <i class="fa-solid fa-shield-halved"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-xl sm:text-2xl font-black tracking-tight text-white flex items-center gap-2">
+                            <span>مستكشف سجلات أحداث ويندوز</span>
+                            <span class="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800">SOC Tool v2.0</span>
+                        </h1>
+                        <p class="text-xs sm:text-sm text-slate-400">دليل الدفاع السيبراني وتحليل السجلات واستجابة الحوادث (SOC / Threat Hunting)</p>
+                    </div>
+                </div>
+
+                <!-- Stats Summary Header -->
+                <div class="flex items-center gap-3 text-xs font-mono">
+                    <div class="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                        <span class="text-slate-400">إجمالي الأحداث:</span>
+                        <span id="total-count" class="text-cyan-400 font-bold">0</span>
+                    </div>
+                    <div class="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 flex items-center gap-2">
+                        <span class="text-slate-400">معروض الآن:</span>
+                        <span id="shown-count" class="text-emerald-400 font-bold">0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow w-full">
+        
+        <!-- Search & Control Section -->
+        <section class="mb-8">
+            <div class="glass-panel p-4 sm:p-6 rounded-2xl shadow-xl border border-slate-800">
+                <!-- Big Search Input -->
+                <div class="relative flex items-center">
+                    <i class="fa-solid fa-magnifying-glass absolute right-4 text-slate-400 text-xl pointer-events-none"></i>
+                    <input 
+                        type="text" 
+                        id="search-input"
+                        placeholder="ابحث برقم الحدث (مثلاً: 1102, 4624)، أو اسم الحدث، أو تقنية MITRE (T1070)..." 
+                        class="w-full pl-12 pr-12 py-4 bg-slate-950/80 border border-slate-700/80 rounded-xl text-white text-base sm:text-lg focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/30 transition-all font-sans placeholder-slate-500"
+                        autofocus
+                    >
+                    <button 
+                        id="clear-search" 
+                        class="hidden absolute left-4 text-slate-400 hover:text-white p-1 rounded-lg transition-colors"
+                        title="مسح البحث"
+                    >
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
+                </div>
+
+                <!-- Quick Filters -->
+                <div class="mt-4 flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/80">
+                    <span class="text-xs text-slate-400 font-semibold ml-2 flex items-center gap-1">
+                        <i class="fa-solid fa-filter text-cyan-400"></i> تصفية سريعة:
+                    </span>
+                    
+                    <button data-filter="all" class="filter-btn active px-3 py-1.5 rounded-lg text-xs font-semibold border border-cyan-500 bg-cyan-500/10 text-cyan-400 transition-all">الكل</button>
+                    <button data-filter="critical" class="filter-btn px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-800 bg-slate-900 text-rose-400 hover:border-rose-500/50 transition-all">حرجة جداً / High</button>
+                    <button data-filter="auth" class="filter-btn px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-800 bg-slate-900 text-slate-300 hover:border-cyan-500/50 transition-all">تسجيل الدخول و Kerberos</button>
+                    <button data-filter="accounts" class="filter-btn px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-800 bg-slate-900 text-slate-300 hover:border-cyan-500/50 transition-all">المجموعات والحسابات</button>
+                    <button data-filter="privilege" class="filter-btn px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-800 bg-slate-900 text-slate-300 hover:border-cyan-500/50 transition-all">الصلاحيات والتخفي</button>
+                    <button data-filter="objects" class="filter-btn px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-800 bg-slate-900 text-slate-300 hover:border-cyan-500/50 transition-all">الكائنات والملفات (Objects)</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Events Cards Grid -->
+        <section>
+            <div id="events-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
+                <!-- Cards injected dynamically via JS -->
+            </div>
+
+            <!-- Empty Search Results Placeholder -->
+            <div id="no-results" class="hidden text-center py-16 glass-panel rounded-2xl border border-slate-800">
+                <i class="fa-solid fa-folder-open text-6xl text-slate-600 mb-4"></i>
+                <h3 class="text-xl font-bold text-slate-300">لم يتم العثور على أي حدث مطابق</h3>
+                <p class="text-sm text-slate-500 mt-1">تأكد من كتابة رقم الحدث بالشكل الصحيح أو امسح البحث لمشاهدة كافة الأحداث.</p>
+                <button onclick="resetSearch()" class="mt-4 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold text-xs rounded-xl transition-all">
+                    إعادة ضبط البحث
+                </button>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-800/80 py-6 glass-panel mt-12">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-400 gap-4">
+            <div class="flex items-center space-x-2 space-x-reverse">
+                <i class="fa-solid fa-code text-cyan-400"></i>
+                <span>تم التطوير للاستخدام المهني في مراكز العمليات الأمنية (SOC) والدفاع الرقمي.</span>
+            </div>
+            <div class="font-mono text-slate-500">
+                <span>Ref: Microsoft AD Security Audit & MITRE ATT&CK Matrix</span>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Application Script -->
+    <script>
+        // Database of Events
+        const eventsData = [
+            {
+                id: 1100,
+                legacyId: "N/A",
+                criticality: "High",
+                titleEn: "The event logging service has shut down",
+                titleAr: "إيقاف تشغيل خدمة سجل الأحداث",
+                descEn: "Indicates that the Windows Event Log service was stopped. This happens during normal shutdown, but can also be stopped by an adversary to disable auditing.",
+                descAr: "يشير إلى تم إيقاف خدمة سجل الأحداث في ويندوز. قد يحدث هذا أثناء إيقاف تشغيل النظام الطبيعي، ولكن إيقافه يدوياً يعكس محاولة مهاجم تعطيل التسجيل والمراقبة.",
+                importance: "May indicate an attacker is attempting to turn off security auditing before launching further attacks.",
+                mitreId: "T1562.002",
+                mitreName: "Impair Defences: Disable Windows Event Logging",
+                category: "privilege"
+            },
+            {
+                id: 1102,
+                legacyId: "517",
+                criticality: "High",
+                titleEn: "The audit log was cleared",
+                titleAr: "تم مسح سجل الأمان (Security Log Cleared)",
+                descEn: "The Windows Security event log was cleared by a user or script. Highly suspicious when executed outside maintenance windows.",
+                descAr: "قام مستخدم أو برنامج بمسح سجل أمان ويندوز بالكامل. يُعد هذا إجراءً مشبوهاً للغاية عندما يقع خارج أوقات الصيانة المعتمدة.",
+                importance: "May indicate an attacker is attempting to cover their tracks by clearing the security log after unauthorized admin access.",
+                mitreId: "T1070.001",
+                mitreName: "Indicator Removal: Clear Windows Event Logs",
+                category: "privilege"
+            },
+            {
+                id: 4624,
+                legacyId: "528, 540",
+                criticality: "Low",
+                titleEn: "An account was successfully logged on",
+                titleAr: "تسجيل دخول ناجح لحساب",
+                descEn: "Generated when a logon session is created. Includes logon type (Interactive, Network, RemoteDesktop, Batch, etc.).",
+                descAr: "يتولد عند إنشاء جلسة دخول جديدة بنجاح. يتضمن نوع تسجيل الدخول (عن بُعد، تفاعلي، عبر الشبكة، إلخ).",
+                importance: "Helps identify unauthorized or suspicious logon attempts, and track user activity on the network (e.g., off-hours logons).",
+                mitreId: "T1078",
+                mitreName: "Valid Accounts",
+                category: "auth"
+            },
+            {
+                id: 4625,
+                legacyId: "529-537",
+                criticality: "Medium",
+                titleEn: "An account failed to log on",
+                titleAr: "محاولة تسجيل دخول فاشلة",
+                descEn: "Generated when a logon attempt fails. Contains failure status codes (e.g. wrong password, disabled account, expired password).",
+                descAr: "يتولد عند فشل محاولة تسجيل الدخول. يحتوي على أكواد التوضيح (مثل كلمة مرور خاطئة، حساب معطل، إلخ).",
+                importance: "Indicates potential brute-force attacks or password spraying attempts against target systems.",
+                mitreId: "T1110",
+                mitreName: "Brute Force",
+                category: "auth"
+            },
+            {
+                id: 4648,
+                legacyId: "552",
+                criticality: "Medium",
+                titleEn: "A logon was attempted using explicit credentials",
+                titleAr: "محاولة تسجيل دخول باستخدام بيانات اعتماد صريحة",
+                descEn: "Generated when a process attempts to log on an account by explicitly specifying that account's credentials (e.g., runas command).",
+                descAr: "يحدث عندما يحاول برنامج أو أمر (مثل runas) تسجيل الدخول باستعمال اسم مستخدم وكلمة مرور محددة صراحة.",
+                importance: "May suggest credential theft, lateral movement, or misuse of alternate elevated accounts.",
+                mitreId: "T1134 / T1078",
+                mitreName: "Access Token Manipulation / Valid Accounts",
+                category: "auth"
+            },
+            {
+                id: 4662,
+                legacyId: "566",
+                criticality: "Medium",
+                titleEn: "An operation was performed on an object",
+                titleAr: "تنفيذ عملية على كائن في Active Directory",
+                descEn: "Generated when an operation is performed on an AD object. Crucial for detecting DCSync directory replication attacks.",
+                descAr: "يتولد عند اجراء عملية على عنصر داخل Active Directory. حرج جداً لاكتشاف هجمات مزامنة الدومين (DCSync).",
+                importance: "Helps track access to critical AD objects (e.g. an attacker performing DCSync replication from an unauthorized host).",
+                mitreId: "T1003.006",
+                mitreName: "OS Credential Dumping: DCSync",
+                category: "objects"
+            },
+            {
+                id: 4663,
+                legacyId: "567",
+                criticality: "Low",
+                titleEn: "An attempt was made to access an object",
+                titleAr: "طلب الوصول إلى كائن (ملف أو سجّل أو مجلد)",
+                descEn: "Monitors attempts to perform specific actions on audited sensitive objects like files, processes, and registry keys.",
+                descAr: "يرصد محاولات الوصول لتنفيذ إجراءات محددة على ملفات أو مفاتيح سجل النظام المجهزة لخيار التدقيق (Auditing).",
+                importance: "Monitors unauthorized access to sensitive high-value target files or confidential resources.",
+                mitreId: "T1222",
+                mitreName: "File and Directory Permissions Modification",
+                category: "objects"
+            },
+            {
+                id: 4670,
+                legacyId: "N/A",
+                criticality: "Low",
+                titleEn: "Permissions on an object were changed",
+                titleAr: "تم تغيير أذونات وصلاحيات كائن (Discretionary ACL)",
+                descEn: "Generated when permissions (DACL) on a file, folder, registry key, or AD object are modified.",
+                descAr: "يتولد عندما يتم تغيير أذونات الوصول (DACL) الخاصة بملف أو مجلد أو مفتاح سجّل.",
+                importance: "Helps detect potential tampering with sensitive files or unauthorized privilege escalation by altering object ACLs.",
+                mitreId: "T1222",
+                mitreName: "File and Directory Permissions Modification",
+                category: "objects"
+            },
+            {
+                id: 4672,
+                legacyId: "576",
+                criticality: "High",
+                titleEn: "Special privileges assigned to new logon",
+                titleAr: "منح صلاحيات المسؤول الخاصة لجلسة دخول جديدة",
+                descEn: "Indicates that an account logged on with administrative or sensitive privileges assigned (e.g. SeDebugPrivilege, SeTakeOwnershipPrivilege).",
+                descAr: "يشير إلى أن الحساب الذي سجل الدخول تم منحه صلاحيات إدارة فائقة وحساسة على النظام.",
+                importance: "Helps detect privilege escalation and monitors when admin accounts are actively used.",
+                mitreId: "T1078",
+                mitreName: "Valid Accounts: Domain / Local Admin Logons",
+                category: "privilege"
+            },
+            {
+                id: 4688,
+                legacyId: "592",
+                criticality: "Low",
+                titleEn: "A new process has been created",
+                titleAr: "تم إنشاء عملية جديدة (Process Creation)",
+                descEn: "Logs details of newly spawned processes, including parent process and (if enabled) full command line arguments.",
+                descAr: "يسجل تفاصيل إنشاء البرامج والعمليات الجديدة، ويُظهر اسم البرنامج السلف وأوامر التشغيل كاملة (Command Line).",
+                importance: "Fundamental event for Threat Hunting to detect malicious script execution, powershell abuse, and exploits.",
+                mitreId: "T1059",
+                mitreName: "Command and Scripting Interpreter",
+                category: "privilege"
+            },
+            {
+                id: 4697,
+                legacyId: "601",
+                criticality: "High",
+                titleEn: "Attempt to install a service",
+                titleAr: "محاولة تثبيت خدمة جديدة على النظام",
+                descEn: "Logged when a new service is installed on the local system. Often used by attackers for persistence or lateral movement (PsExec).",
+                descAr: "يسجل عند تثبيت خدمة نظام جديدة. يُستخدم بشكل شائع من قبل المهاجمين للبقاء في الجهاز أو التنقل الجانبي.",
+                importance: "Crucial for detecting unauthorized services, rootkits, or lateral movement tools like PsExec.",
+                mitreId: "T1543.003",
+                mitreName: "Create or Modify System Process: Windows Service",
+                category: "privilege"
+            },
+            {
+                id: 4698,
+                legacyId: "602",
+                criticality: "High",
+                titleEn: "A scheduled task was created",
+                titleAr: "إنشاء مهمة مجدولة جديدة (Scheduled Task)",
+                descEn: "Generated when a scheduled task is created. Attackers frequently use scheduled tasks to maintain persistence or execute beacons.",
+                descAr: "يتولد عند إنشاء مهمة مجدولة جديدة. يستخدمها المهاجمون لضمان استمرار البقاء في النظام أو تشغيل البرمجيات الخبيثة دورياً.",
+                importance: "Helps detect malicious persistence, execution, or automated privilege escalation schedules.",
+                mitreId: "T1053.005",
+                mitreName: "Scheduled Task/Job: Scheduled Task",
+                category: "privilege"
+            },
+            {
+                id: 4720,
+                legacyId: "624",
+                criticality: "High",
+                titleEn: "A user account was created",
+                titleAr: "إنشاء حساب مستخدم جديد",
+                descEn: "Generated when a new user account is created on a local machine or Active Directory domain.",
+                descAr: "يتولد عند إنشاء حساب مستخدم جديد على الجهاز المحلي أو على مستوى الدومين (Active Directory).",
+                importance: "Monitors for unauthorized account creation or rogue persistence introduced by intruders.",
+                mitreId: "T1136",
+                mitreName: "Create Account: Local or Domain Account",
+                category: "accounts"
+            },
+            {
+                id: 4724,
+                legacyId: "628",
+                criticality: "Medium",
+                titleEn: "An attempt was made to reset an account's password",
+                titleAr: "محاولة إعادة تعيين كلمة مرور حساب",
+                descEn: "Logged when an administrator or delegated user attempts to reset another user account's password.",
+                descAr: "يسجل عندما يحاول مسؤول أو مستخدم مفوض تغيير/إعادة تعيين كلمة مرور حساب آخر.",
+                importance: "Monitors unauthorized password resets, which could indicate account takeover of high-privilege users.",
+                mitreId: "T1098",
+                mitreName: "Account Manipulation",
+                category: "accounts"
+            },
+            {
+                id: 4728,
+                legacyId: "632",
+                criticality: "High",
+                titleEn: "A member was added to a security-enabled global group",
+                titleAr: "إضافة عضو إلى مجموعة أمان عالمية (مثل Domain Admins)",
+                descEn: "Generated when a user/computer is added to a global security group in Active Directory.",
+                descAr: "يتولد عند إضافة مستخدم أو جهاز إلى مجموعة أمان عالمية داخل الدومين (مثل مجموعة إداريي الدومين).",
+                importance: "Tracks unauthorized privilege escalation to domain-level administrator groups.",
+                mitreId: "T1098",
+                mitreName: "Account Manipulation: Domain Group Modifications",
+                category: "accounts"
+            },
+            {
+                id: 4732,
+                legacyId: "636",
+                criticality: "High",
+                titleEn: "A member was added to a security-enabled local group",
+                titleAr: "إضافة عضو إلى مجموعة أمان محلية (مثل Administrators)",
+                descEn: "Generated when a user is added to a local security group (e.g. Local Administrators, Remote Desktop Users).",
+                descAr: "يتولد عند إضافة مستخدم إلى مجموعة أمان محلية في الجهاز (مثل مجموعة المسؤولين المحليين).",
+                importance: "Monitors local privilege escalation and unauthorized grant of local administrator rights.",
+                mitreId: "T1098",
+                mitreName: "Account Manipulation: Local Group Modifications",
+                category: "accounts"
+            },
+            {
+                id: 4740,
+                legacyId: "644",
+                criticality: "Medium",
+                titleEn: "A user account was locked out",
+                titleAr: "تم إقفال حساب المستخدم (Account Lockout)",
+                descEn: "Generated when an account is locked out after too many failed logon attempts.",
+                descAr: "يحدث عند إقفال حساب مستخدم بسبب تجاوز عدد محاولات الدخول الفاشلة المسموح بها.",
+                importance: "Key indicator of brute-force attacks or locked accounts causing denial of service.",
+                mitreId: "T1110",
+                mitreName: "Brute Force: Password Spraying / Lockout",
+                category: "accounts"
+            },
+            {
+                id: 4765,
+                legacyId: "N/A",
+                criticality: "High",
+                titleEn: "SID History was added to an account",
+                titleAr: "تمت إضافة سجل SID History إلى حساب",
+                descEn: "Generated when SID History attribute is appended to a user object. Allows cross-domain privilege abuse.",
+                descAr: "يتولد عند إضافة معرف SID History لحساب. تُمكّن المهاجمين من انتحال صلاحيات دومين آخر (SID History Injection).",
+                importance: "High critical alert for SID History Injection attacks following domain compromise.",
+                mitreId: "T1134.005",
+                mitreName: "Access Token Manipulation: SID History Injection",
+                category: "privilege"
+            },
+            {
+                id: 4768,
+                legacyId: "672, 676",
+                criticality: "Medium",
+                titleEn: "A Kerberos authentication ticket (TGT) was requested",
+                titleAr: "طلب تذكرة مصادقة Kerberos TGT",
+                descEn: "Logged during initial Kerberos authentication when a client requests a Ticket Granting Ticket (TGT) from the KDC.",
+                descAr: "يسجل عند مرحلة المصادقة الأولى في Kerberos عند طلب تذكرة TGT من مركز توزيع المفاتيح KDC.",
+                importance: "Monitors initial domain authentication and helps detect Overpass-the-Hash / Pass-the-Key attacks.",
+                mitreId: "T1558",
+                mitreName: "Steal or Forge Kerberos Tickets",
+                category: "auth"
+            },
+            {
+                id: 4769,
+                legacyId: "673",
+                criticality: "Medium",
+                titleEn: "A Kerberos service ticket was requested",
+                titleAr: "طلب تذكرة خدمة Kerberos (TGS Request)",
+                descEn: "Logged when a user requests a Kerberos ticket for a specific service. Primary event for Kerberoasting detection.",
+                descAr: "يسجل عندما يطلب مستخدم تذكرة access لخدمة معينة (SPN). وهو الحدث الأساسي لكشف هجمات Kerberoasting.",
+                importance: "Crucial for detecting Kerberoasting attacks (requesting TGS for SPNs with weak passwords).",
+                mitreId: "T1558.003",
+                mitreName: "Steal or Forge Kerberos Tickets: Kerberoasting",
+                category: "auth"
+            },
+            {
+                id: 4776,
+                legacyId: "680, 681",
+                criticality: "Low",
+                titleEn: "The domain controller attempted to validate credentials",
+                titleAr: "محاولة وحدة التحكم بالدومين (DC) التحقق من بيانات الاعتماد (NTLM)",
+                descEn: "Logged on DC when NTLM authentication credentials are validated for a user session.",
+                descAr: "يسجل في سيرفر الدومين كنترولر عند التحقق من صحة بيانت الاعتماد بنظام NTLM.",
+                importance: "Helps detect failed or successful NTLM authentication attempts across domain workstations.",
+                mitreId: "T1110",
+                mitreName: "Brute Force: NTLM Validation",
+                category: "auth"
+            },
+            {
+                id: 4794,
+                legacyId: "N/A",
+                criticality: "High",
+                titleEn: "Attempt made to set Directory Services Restore Mode (DSRM) password",
+                titleAr: "محاولة تعيين كلمة مرور وضع استعادة خدمات الدليل (DSRM)",
+                descEn: "Generated when an attempt is made to reset the local DSRM administrator password on a domain controller.",
+                descAr: "يتولد عند محاولة تغيير كلمة مرور حساب DSRM على جهاز التحكم بالدومين (Domain Controller).",
+                importance: "Attacks may abuse DSRM account for persistent backdoor access to domain controllers.",
+                mitreId: "T1098",
+                mitreName: "Account Manipulation: DSRM Account Abuse",
+                category: "privilege"
+            },
+            {
+                id: 4649,
+                legacyId: "N/A",
+                criticality: "High",
+                titleEn: "A replay attack was detected",
+                titleAr: "اكتشاف هجوم إعادة تشغيل (Replay Attack)",
+                descEn: "Generated when replay protection mechanisms detect that a network request or packet was re-sent.",
+                descAr: "يتولد عندما تكتشف أنظمة الأمان محاولة إعادة إرسال حزم بيانات سابقة للدخول (Replay Attack).",
+                importance: "High alert for potential network sniffing and replay attempt of authentication tokens.",
+                mitreId: "T1557",
+                mitreName: "Adversary-in-the-Middle: Replay Attack",
+                category: "auth"
+            },
+            {
+                id: 4719,
+                legacyId: "612",
+                criticality: "High",
+                titleEn: "System audit policy was changed",
+                titleAr: "تم تغيير سياسة تدقيق النظام (Audit Policy Changed)",
+                descEn: "Logged when modifications are made to main system audit settings (e.g., disabling log creation for specific categories).",
+                descAr: "يسجل عند تعديل سياسات التدقيق والمراقبة الأمنية (مثل إيقاف مراقبة تسجيل الدخول أو إيقاف تسجيل العمليات).",
+                importance: "Indicates attempt to blind security team by disabling specific event logging rules.",
+                mitreId: "T1562.002",
+                mitreName: "Impair Defences: Disable Windows Event Logging",
+                category: "privilege"
+            },
+            {
+                id: 4964,
+                legacyId: "N/A",
+                criticality: "High",
+                titleEn: "Special groups have been assigned to a new logon",
+                titleAr: "تعيين مجموعات خاصة لجلسة دخول جديدة",
+                descEn: "Logged when a user belonging to Special Groups (configured in audit policy) logs into the system.",
+                descAr: "يسجل عندما يقوم مستخدم ينتمي إلى 'مجموعات خاصة' محددة بتسجيل الدخول إلى النظام.",
+                importance: "Monitors logons from sensitive high-privilege emergency or admin accounts.",
+                mitreId: "T1078",
+                mitreName: "Valid Accounts: Special Group Logons",
+                category: "auth"
+            },
+            {
+                id: 5124,
+                legacyId: "N/A",
+                criticality: "High",
+                titleEn: "A security setting was updated on the OCSP Responder Service",
+                titleAr: "تحديث إعداد أمان على خدمة استجابة OCSP (شهادات الأمان)",
+                descEn: "Generated when security properties of the Online Certificate Status Protocol (OCSP) service change.",
+                descAr: "يتولد عند تغيير إعدادات الأمان الخاصة بخدمات التحقق من حالة الشهادات الرقمية.",
+                importance: "Indicates possible manipulation of PKI infrastructure or Certificate Revocation Lists.",
+                mitreId: "T1553",
+                mitreName: "Subvert Trust Controls: PKI Abuse",
+                category: "objects"
+            }
+        ];
+
+        // Global State
+        let currentFilter = 'all';
+        let searchQuery = '';
+
+        // DOM Elements
+        const eventsGrid = document.getElementById('events-grid');
+        const searchInput = document.getElementById('search-input');
+        const clearBtn = document.getElementById('clear-search');
+        const noResults = document.getElementById('no-results');
+        const totalCountEl = document.getElementById('total-count');
+        const shownCountEl = document.getElementById('shown-count');
+        const filterBtns = document.querySelectorAll('.filter-btn');
+
+        // Initialize Application
+        document.addEventListener('DOMContentLoaded', () => {
+            totalCountEl.textContent = eventsData.length;
+            renderEvents();
+            setupEventListeners();
+        });
+
+        // Setup Event Listeners
+        function setupEventListeners() {
+            // Live Search Input
+            searchInput.addEventListener('input', (e) => {
+                searchQuery = e.target.value.trim().toLowerCase();
+                clearBtn.classList.toggle('hidden', searchQuery === '');
+                renderEvents();
+            });
+
+            // Clear Button
+            clearBtn.addEventListener('click', resetSearch);
+
+            // Filter Buttons
+            filterBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    filterBtns.forEach(b => {
+                        b.classList.remove('active', 'border-cyan-500', 'bg-cyan-500/10', 'text-cyan-400');
+                        b.classList.add('border-slate-800', 'bg-slate-900', 'text-slate-300');
+                    });
+
+                    btn.classList.add('active', 'border-cyan-500', 'bg-cyan-500/10', 'text-cyan-400');
+                    btn.classList.remove('border-slate-800', 'bg-slate-900', 'text-slate-300');
+
+                    currentFilter = btn.dataset.filter;
+                    renderEvents();
+                });
+            });
+        }
+
+        // Reset Search & Filters
+        function resetSearch() {
+            searchInput.value = '';
+            searchQuery = '';
+            clearBtn.classList.add('hidden');
+            searchInput.focus();
+            renderEvents();
+        }
+
+        // Criticality Badge Stylings
+        function getCriticalityBadge(level) {
+            switch(level.toLowerCase()) {
+                case 'critical':
+                case 'high':
+                    return `<span class="px-2.5 py-1 rounded-md bg-rose-950/80 text-rose-400 border border-rose-800 text-xs font-bold flex items-center gap-1.5"><i class="fa-solid fa-triangle-exclamation"></i> High / Critical</span>`;
+                case 'medium':
+                    return `<span class="px-2.5 py-1 rounded-md bg-amber-950/80 text-amber-400 border border-amber-800 text-xs font-bold flex items-center gap-1.5"><i class="fa-solid fa-circle-exclamation"></i> Medium</span>`;
+                case 'low':
+                default:
+                    return `<span class="px-2.5 py-1 rounded-md bg-slate-900 text-slate-400 border border-slate-700 text-xs font-bold flex items-center gap-1.5"><i class="fa-solid fa-circle-info"></i> Low / Info</span>`;
+            }
+        }
+
+        // Filter and Render Cards
+        function renderEvents() {
+            const filtered = eventsData.filter(item => {
+                // Category Filter
+                let matchesCategory = true;
+                if (currentFilter === 'critical') {
+                    matchesCategory = (item.criticality.toLowerCase() === 'high' || item.criticality.toLowerCase() === 'critical');
+                } else if (currentFilter !== 'all') {
+                    matchesCategory = (item.category === currentFilter);
+                }
+
+                // Search Query Filter
+                let matchesSearch = true;
+                if (searchQuery) {
+                    const q = searchQuery;
+                    matchesSearch = (
+                        item.id.toString().includes(q) ||
+                        item.legacyId.toString().toLowerCase().includes(q) ||
+                        item.titleEn.toLowerCase().includes(q) ||
+                        item.titleAr.toLowerCase().includes(q) ||
+                        item.descEn.toLowerCase().includes(q) ||
+                        item.descAr.toLowerCase().includes(q) ||
+                        item.mitreId.toLowerCase().includes(q) ||
+                        item.mitreName.toLowerCase().includes(q)
+                    );
+                }
+
+                return matchesCategory && matchesSearch;
+            });
+
+            // Update Counts
+            shownCountEl.textContent = filtered.length;
+
+            // Render HTML
+            if (filtered.length === 0) {
+                eventsGrid.innerHTML = '';
+                noResults.classList.remove('hidden');
+                return;
+            }
+
+            noResults.classList.add('hidden');
+
+            eventsGrid.innerHTML = filtered.map(item => `
+                <div class="event-card glass-panel rounded-2xl p-5 sm:p-6 border border-slate-800 flex flex-col justify-between relative overflow-hidden group">
+                    
+                    <!-- Top Accent Line -->
+                    <div class="absolute top-0 right-0 left-0 h-1 ${item.criticality === 'High' ? 'bg-rose-500' : item.criticality === 'Medium' ? 'bg-amber-500' : 'bg-slate-700'}"></div>
+
+                    <div>
+                        <!-- Header Row: ID + Badges -->
+                        <div class="flex items-center justify-between gap-3 mb-4">
+                            <div class="flex items-center space-x-3 space-x-reverse">
+                                <span class="font-mono font-black text-2xl sm:text-3xl text-cyan-400 bg-slate-950 px-3 py-1 rounded-xl border border-slate-800 shadow-inner">
+                                    ID ${item.id}
+                                </span>
+                                ${item.legacyId !== 'N/A' ? `<span class="text-xs font-mono text-slate-500" title="Legacy Windows ID">Legacy: ${item.legacyId}</span>` : ''}
+                            </div>
+                            <div>
+                                ${getCriticalityBadge(item.criticality)}
+                            </div>
+                        </div>
+
+                        <!-- Titles -->
+                        <div class="space-y-1 mb-4 border-b border-slate-800/80 pb-3">
+                            <h3 class="text-lg font-bold text-white leading-snug">${item.titleAr}</h3>
+                            <p class="text-xs font-mono text-cyan-300/80 dir-ltr text-right">${item.titleEn}</p>
+                        </div>
+
+                        <!-- Descriptions (Bilingual) -->
+                        <div class="space-y-3 text-sm text-slate-300 mb-5">
+                            <div class="bg-slate-950/60 p-3 rounded-xl border border-slate-800/60">
+                                <p class="text-xs text-cyan-400 font-bold mb-1"><i class="fa-solid fa-align-right ml-1"></i> الشرح والتوضيح بالأمن السيبراني:</p>
+                                <p class="text-xs leading-relaxed text-slate-300">${item.descAr}</p>
+                            </div>
+
+                            <div class="bg-slate-950/40 p-3 rounded-xl border border-slate-800/40">
+                                <p class="text-xs text-slate-400 font-semibold mb-1"><i class="fa-solid fa-shield-virus ml-1"></i> أهميتها للمدافعين (Defenders):</p>
+                                <p class="text-xs leading-relaxed text-slate-400">${item.importance}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Footer Details: MITRE ATT&CK & Copy Action -->
+                    <div class="pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                        <!-- MITRE Mapping -->
+                        <div class="flex items-center space-x-2 space-x-reverse bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 text-slate-300">
+                            <i class="fa-solid fa-crosshairs text-rose-400"></i>
+                            <span class="font-bold text-slate-400">MITRE:</span>
+                            <span class="font-mono font-bold text-cyan-400">${item.mitreId}</span>
+                        </div>
+
+                        <!-- Quick Copy Button -->
+                        <button 
+                            onclick="copyEventDetails(${item.id})"
+                            class="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-cyan-950 border border-slate-700 hover:border-cyan-500 text-slate-300 hover:text-cyan-300 font-semibold transition-all flex items-center justify-center gap-1.5"
+                        >
+                            <i class="fa-regular fa-copy"></i>
+                            <span>نسخ التفاصيل</span>
+                        </button>
+                    </div>
+
+                </div>
+            `).join('');
+        }
+
+        // Copy Details Snippet to Clipboard
+        function copyEventDetails(eventId) {
+            const item = eventsData.find(e => e.id === eventId);
+            if (!item) return;
+
+            const textToCopy = `[Windows Event ID ${item.id}]
+Title: ${item.titleEn} (${item.titleAr})
+Severity: ${item.criticality}
+MITRE ATT&CK: ${item.mitreId} - ${item.mitreName}
+Description: ${item.descAr}`;
+
+            // Clipboard fallback
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(textToCopy).then(() => showToast());
+            } else {
+                const textArea = document.createElement("textarea");
+                textArea.value = textToCopy;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                showToast();
+            }
+        }
+
+        // Show Toast Notification
+        function showToast() {
+            const toast = document.getElementById('toast');
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            toast.classList.add('translate-y-0', 'opacity-100');
+            
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+                toast.classList.remove('translate-y-0', 'opacity-100');
+            }, 2500);
+        }
+    </script>
+</body>
+</html>
